@@ -7,8 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:5000",
+        target: "https://echomind-backend-hu69.onrender.com",
         changeOrigin: true,
+        secure: true,
       },
     },
   },
