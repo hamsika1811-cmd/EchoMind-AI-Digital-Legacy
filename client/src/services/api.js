@@ -1,8 +1,6 @@
 import axios from "axios";
 
-const api = axios.create({
-  baseURL: "https://echomind-backend-hu69.onrender.com/api",
-});
+const api = axios.create({ baseURL: "/api" });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("echomind_token");

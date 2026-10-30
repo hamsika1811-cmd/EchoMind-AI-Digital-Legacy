@@ -6,6 +6,8 @@ import Layout from "./components/Layout.jsx";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import MemoryVault from "./pages/MemoryVault.jsx";
 import AddMemory from "./pages/AddMemory.jsx";
@@ -13,6 +15,7 @@ import MemoryDetails from "./pages/MemoryDetails.jsx";
 import EditMemory from "./pages/EditMemory.jsx";
 import EchoMindAI from "./pages/EchoMindAI.jsx";
 import LegacyAccess from "./pages/LegacyAccess.jsx";
+import IncomingLegacyAccess from "./pages/IncomingLegacyAccess.jsx";
 import AuditLog from "./pages/AuditLog.jsx";
 import LegacyProfile from "./pages/LegacyProfile.jsx";
 import Export from "./pages/Export.jsx";
@@ -37,6 +40,9 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
 
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/memories" element={<ProtectedRoute><MemoryVault /></ProtectedRoute>} />
@@ -45,6 +51,7 @@ export default function App() {
       <Route path="/memories/:id/edit" element={<ProtectedRoute><EditMemory /></ProtectedRoute>} />
       <Route path="/ai" element={<ProtectedRoute><EchoMindAI /></ProtectedRoute>} />
       <Route path="/access" element={<ProtectedRoute><LegacyAccess /></ProtectedRoute>} />
+      <Route path="/incoming" element={<ProtectedRoute><IncomingLegacyAccess /></ProtectedRoute>} />
       <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><LegacyProfile /></ProtectedRoute>} />
       <Route path="/export" element={<ProtectedRoute><Export /></ProtectedRoute>} />

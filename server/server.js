@@ -2,7 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
-const { getPublicStats } = require("./data/store");
+const connectDB = require("./config/database");
+const { getPublicStats, initializeStore, waitForWrites, flushStore } = require("./data/store");
 const authRoutes = require("./routes/auth");
 const memoriesRoutes = require("./routes/memories");
 const aiRoutes = require("./routes/ai");
@@ -16,6 +17,21 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// Wait for MongoDB writes before returning API responses.
+app.use((req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (...args) => {
+    waitForWrites()
+      .then(() => sendJson(...args))
+      .catch((error) => {
+        console.error("MongoDB write failed:", error.message);
+        if (!res.headersSent) res.status(500).send({ error: "Could not save your changes. Please try again." });
+      });
+    return res;
+  };
+  next();
+});
 
 // Public route — safe to show on the landing page before login.
 // Never exposes memory content, user data, or anything account-specific.
@@ -43,6 +59,26 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found." });
 });
 
-app.listen(PORT, () => {
-  console.log(`EchoMind API listening on port ${PORT}`);
+async function startServer() {
+  try {
+    await connectDB();
+    await initializeStore();
+    app.listen(PORT, () => {
+      console.log(`EchoMind API listening on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("EchoMind could not start:", error.message);
+    process.exit(1);
+  }
+}
+
+process.on("SIGINT", async () => {
+  try { await flushStore(); } catch (error) { console.error("Final save failed:", error.message); }
+  process.exit(0);
 });
+process.on("SIGTERM", async () => {
+  try { await flushStore(); } catch (error) { console.error("Final save failed:", error.message); }
+  process.exit(0);
+});
+
+startServer();

@@ -80,6 +80,73 @@ router.post("/", (req, res) => {
   res.status(201).json({ memory });
 });
 
+
+// GET /api/memories/shared — memories explicitly shared with this recipient.
+router.get("/shared", (req, res) => {
+  const recipient = db.users.find((u) => u.id === req.userId);
+  if (!recipient) {
+    return res.status(404).json({ error: "Account not found." });
+  }
+
+  const now = new Date();
+
+  const grants = db.accessGrants.filter((g) => {
+    const emailMatches =
+      (g.recipientEmail || "").toLowerCase() ===
+      recipient.email.toLowerCase();
+
+    const recipientMatches =
+      g.recipientId === req.userId || emailMatches;
+
+    if (!recipientMatches || g.ownerId === req.userId) return false;
+    if (g.status !== "Active") return false;
+
+    if (g.releaseCondition === "Scheduled") {
+      if (!g.releaseDate || new Date(g.releaseDate) > now) return false;
+    }
+
+    // Event-based access needs a real activation flow; do not release it automatically.
+    if (g.releaseCondition === "Event-based") return false;
+
+    return true;
+  });
+
+  const memories = db.memories
+    .filter((memory) =>
+      grants.some((grant) => {
+        if (memory.userId !== grant.ownerId) return false;
+
+        // Never expose memories marked private through a legacy grant.
+        if (memory.privacy === "private") return false;
+
+        const categories = grant.allowedCategories || [];
+        if (categories.length && !categories.includes(memory.category)) {
+          return false;
+        }
+
+        const allowedTags = grant.allowedTags || [];
+        if (
+          allowedTags.length &&
+          !memory.tags?.some((tag) => allowedTags.includes(tag))
+        ) {
+          return false;
+        }
+
+        return true;
+      })
+    )
+    .map((memory) => {
+      const owner = db.users.find((u) => u.id === memory.userId);
+      return {
+        ...memory,
+        ownerName: owner?.name || "EchoMind user",
+        sharedReadOnly: true,
+      };
+    });
+
+  res.json({ memories });
+});
+
 // GET /api/memories/:id
 router.get("/:id", (req, res) => {
   const memory = db.memories.find((m) => m.id === req.params.id);

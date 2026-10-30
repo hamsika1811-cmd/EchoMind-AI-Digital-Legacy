@@ -7,13 +7,97 @@ const { v4: uuid } = require("uuid");
 // collection or a Postgres table with minimal changes to the routes.
 // ---------------------------------------------------------------------------
 
-const db = {
-  users: [],
-  memories: [],
-  accessGrants: [],
-  auditLogs: [],
-  chatMessages: [],
-};
+const mongoose = require("mongoose");
+
+const COLLECTIONS = ["users", "memories", "accessGrants", "auditLogs", "chatMessages", "passwordResetTokens"];
+const raw = Object.fromEntries(COLLECTIONS.map((name) => [name, []]));
+const pending = new Map();
+let ready = false;
+
+// A compatibility persistence layer: it keeps the existing route API while
+// storing each collection in MongoDB. Nested edits and array mutations are tracked.
+const documentSchema = new mongoose.Schema({
+  id: { type: String, required: true, index: true },
+  payload: { type: mongoose.Schema.Types.Mixed, required: true },
+}, { versionKey: false, strict: true });
+const models = Object.fromEntries(COLLECTIONS.map((name) => [
+  name,
+  mongoose.models[`EchoMind_${name}`] || mongoose.model(`EchoMind_${name}`, documentSchema, name),
+]));
+
+function persist(name) {
+  if (!ready) return;
+  const previous = pending.get(name) || Promise.resolve();
+  const next = previous.catch(() => {}).then(async () => {
+    const Model = models[name];
+    await Model.deleteMany({});
+    if (raw[name].length) {
+      await Model.insertMany(raw[name].map((item) => ({ id: String(item.id), payload: JSON.parse(JSON.stringify(item)) })), { ordered: true });
+    }
+  });
+  pending.set(name, next);
+  next.catch((error) => console.error(`[MongoDB] Could not save ${name}:`, error.message));
+}
+
+function wrap(value, name) {
+  if (!value || typeof value !== "object") return value;
+  return new Proxy(value, {
+    get(target, prop, receiver) {
+      const result = Reflect.get(target, prop, receiver);
+      return (result && typeof result === "object") ? wrap(result, name) : result;
+    },
+    set(target, prop, next, receiver) {
+      const result = Reflect.set(target, prop, next, receiver);
+      persist(name);
+      return result;
+    },
+    deleteProperty(target, prop) {
+      const result = Reflect.deleteProperty(target, prop);
+      persist(name);
+      return result;
+    },
+  });
+}
+
+const db = new Proxy({}, {
+  get(_target, name) { return COLLECTIONS.includes(name) ? wrap(raw[name], name) : undefined; },
+  set(_target, name, value) {
+    if (!COLLECTIONS.includes(name)) return false;
+    raw[name] = Array.isArray(value) ? value : [];
+    persist(name);
+    return true;
+  },
+});
+
+async function initializeStore() {
+  for (const name of COLLECTIONS) {
+    const docs = await models[name].find({}, { _id: 0, payload: 1 }).lean();
+    raw[name] = docs.map((doc) => doc.payload);
+  }
+  ready = true;
+  const hasData = COLLECTIONS.some((name) => raw[name].length > 0);
+  if (!hasData) {
+    seed();
+    await flushStore();
+    console.log("MongoDB is empty; EchoMind demo data has been added.");
+  }
+  console.log("EchoMind data loaded from MongoDB.");
+}
+
+async function waitForWrites() {
+  await Promise.all([...pending.values()]);
+}
+
+async function flushStore() {
+  await waitForWrites();
+  // Persist current snapshots once more to ensure startup seeding is complete.
+  for (const name of COLLECTIONS) {
+    const Model = models[name];
+    await Model.deleteMany({});
+    if (raw[name].length) await Model.insertMany(raw[name].map((item) => ({ id: String(item.id), payload: JSON.parse(JSON.stringify(item)) })));
+  }
+}
+
 
 function addAudit({ userId, action, actor, resourceType, resourceId, description, status = "success" }) {
   const entry = {
@@ -316,7 +400,6 @@ function seed() {
   });
 }
 
-seed();
 
 // Public, non-sensitive counters shown on the landing page before login.
 function getPublicStats() {
@@ -328,4 +411,4 @@ function getPublicStats() {
   };
 }
 
-module.exports = { db, addAudit, getPublicStats };
+module.exports = { db, addAudit, getPublicStats, initializeStore, flushStore, waitForWrites };
